@@ -1,0 +1,37 @@
+name: StarBack Star
+
+on:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  star:
+    if: >-
+      github.event_name == 'issues' &&
+      github.event.action == 'edited' &&
+      github.event.repository.owner.type == 'User' &&
+      github.event.issue.user.login == github.repository_owner &&
+      github.event.issue.pull_request == null &&
+      contains(github.event.issue.labels.*.name, 'starback-inbox')
+    concurrency:
+      group: starback-star-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out StarBack
+        uses: actions/checkout@v7
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Star selected repositories
+        run: npm run star
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STARBACK_TOKEN: ${{ secrets.STARBACK_TOKEN }}
