@@ -1,0 +1,19 @@
+{
+  "name": "starback",
+  "version": "0.1.0",
+  "description": "A GitHub-native inbox for discovering and starring repositories.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.12 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "discover": "node scripts/discover.ts",
+    "star": "node scripts/star.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "typescript": "7.0.2"
+  }
+}
