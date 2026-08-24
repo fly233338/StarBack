@@ -9,13 +9,11 @@ export async function main(): Promise<void> {
   const token = requiredEnvironment("GITHUB_TOKEN");
   const repository = requiredEnvironment("GITHUB_REPOSITORY");
   requiredEnvironment("GITHUB_RUN_ID");
-  const starToken = process.env.STARBACK_TOKEN || undefined;
   await runStar({
     client: new GitHubClient(token),
-    starClient: starToken === undefined ? undefined : new GitHubClient(starToken),
+    createStarClient: () => new GitHubClient(requiredEnvironment("STARBACK_TOKEN")),
     repository,
     event: event as StarEvent,
-    starToken,
   });
 }
 

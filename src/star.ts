@@ -1,10 +1,6 @@
 import { findCheckboxTransitions } from "./checkbox.ts";
 import { parseRepositoryPath } from "./identifiers.ts";
-import {
-  GitHubClient,
-  type FetchImplementation,
-  type GitHubIssue,
-} from "./github.ts";
+import { GitHubClient, type GitHubIssue } from "./github.ts";
 import { getCheckboxRows, hasInboxLabel, restoreFailedRepositories } from "./inbox.ts";
 
 export interface StarEvent {
@@ -13,6 +9,7 @@ export interface StarEvent {
     full_name?: string;
     owner?: { login?: string; type?: string };
   };
+  sender?: { login?: string; type?: string };
   issue?: GitHubIssue;
   changes?: {
     body?: { from?: string | null };
@@ -22,10 +19,9 @@ export interface StarEvent {
 export interface StarOptions {
   client: GitHubClient;
   starClient?: GitHubClient;
+  createStarClient?: () => GitHubClient;
   repository: string;
   event: StarEvent;
-  starToken?: string;
-  fetchImplementation?: FetchImplementation;
   log?: (message: string) => void;
 }
 
@@ -55,13 +51,26 @@ export async function runStar(options: StarOptions): Promise<void> {
     return;
   }
 
-  const starClient =
-    options.starClient ??
-    (options.starToken === undefined ? undefined : new GitHubClient(options.starToken, options.fetchImplementation));
+  let starClient = options.starClient;
+  let starClientError: unknown;
+  if (starClient === undefined && options.createStarClient !== undefined) {
+    try {
+      starClient = options.createStarClient();
+    } catch (error) {
+      starClientError = error;
+    }
+  }
+  if (starClient === undefined && starClientError === undefined) {
+    starClientError = new Error("Missing required environment variable: STARBACK_TOKEN");
+  }
+
   const failures: Array<{ repository: string; error: unknown }> = [];
   for (const transition of selected) {
     const target = transition.repository.fullName;
     try {
+      if (starClientError !== undefined) {
+        throw starClientError;
+      }
       if (starClient === undefined) {
         throw new Error("Missing required environment variable: STARBACK_TOKEN");
       }
@@ -118,6 +127,12 @@ export function validateStarEvent(event: StarEvent, repository: string): GitHubI
   }
   if (event.repository?.owner?.type !== "User") {
     throw new Error("StarBack v0.1 only supports personal repositories");
+  }
+  if (
+    event.sender?.type !== "User" ||
+    event.sender.login?.toLowerCase() !== expectedRepository.owner.toLowerCase()
+  ) {
+    throw new Error("Only the repository owner can edit an Inbox Issue");
   }
   const issue = event.issue;
   if (issue === undefined) {

@@ -186,7 +186,15 @@ async function writeRecommendations(
   }
 
   while (remaining.length > 0) {
-    if (lastPage === undefined || countGeneratedRecommendations(lastPage.issue.body ?? "") >= 100) {
+    let pageIsFull = false;
+    if (lastPage !== undefined) {
+      const latestIssue = await client.getIssue(repository, lastPage.issue.number);
+      const latestTitle = validateWritableInboxPage(latestIssue, lastPage.title, now);
+      lastPage = { issue: latestIssue, title: latestTitle };
+      pageIsFull = countGeneratedRecommendations(latestIssue.body ?? "") >= 100;
+    }
+
+    if (lastPage === undefined || pageIsFull) {
       if (lastPage !== undefined) {
         nextPage += 1;
       }
@@ -216,4 +224,20 @@ async function writeRecommendations(
     };
     log(`Added ${pageRecommendations.length} recommendation${pageRecommendations.length === 1 ? "" : "s"} to Inbox page ${lastPage.title.page}.`);
   }
+}
+
+function validateWritableInboxPage(issue: GitHubIssue, expectedTitle: InboxTitle, now: Date): InboxTitle {
+  const title = parseInboxTitle(issue.title);
+  if (
+    issue.state !== "open" ||
+    issue.pull_request !== undefined ||
+    !hasInboxLabel(issue) ||
+    title === null ||
+    title.year !== now.getUTCFullYear() ||
+    title.month !== now.getUTCMonth() + 1 ||
+    title.page !== expectedTitle.page
+  ) {
+    throw new Error(`Inbox page #${expectedTitle.page} is no longer a writable current-month Inbox`);
+  }
+  return title;
 }

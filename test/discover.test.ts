@@ -33,6 +33,7 @@ describe("discover workflow", () => {
       jsonResponse({ ...oldIssue, state: "closed" }),
       jsonResponse([currentIssue]),
       jsonResponse([already, fresh]),
+      jsonResponse({ ...currentIssue, body: `User edit\n${currentIssue.body}` }),
       jsonResponse({ ...currentIssue, body: `${currentIssue.body}\n${formatRecommendation(fresh, "run-1")}` }),
     ]);
     const client = new GitHubClient("github-token", mock.fetch);
@@ -51,6 +52,7 @@ describe("discover workflow", () => {
     assert.equal(patchCalls.length, 2);
     assert.match(requestBody(patchCalls[0]), /"state":"closed"/);
     const updatedBody = JSON.parse(requestBody(patchCalls[1])).body as string;
+    assert.match(updatedBody, /User edit/);
     assert.match(updatedBody, /alice\/fresh/);
     assert.doesNotMatch(updatedBody, /alice\/already.*starback-run/);
     assert.equal(mock.calls[1].init?.method, "POST");
@@ -119,6 +121,7 @@ describe("discover workflow", () => {
         link: '<https://api.github.com/users/alice/repos?page=2>; rel="next"',
       }),
       jsonResponse(secondPage),
+      jsonResponse(current),
       jsonResponse(makeIssue(11, "StarBack Inbox · August 2026 · #2", ""), 201),
     ]);
 
@@ -136,5 +139,36 @@ describe("discover workflow", () => {
     assert.notEqual(createCall, undefined);
     assert.match(requestBody(createCall!), /StarBack Inbox · August 2026 · #2/);
     assert.match(requestBody(createCall!), /alice\/new-/);
+  });
+
+  it("creates the next page when the latest body became full without patching the old page", async () => {
+    const initial = makeIssue(10, "StarBack Inbox · August 2026", "- [ ] alice/initial");
+    const latestBody = Array.from({ length: 100 }, (_, index) =>
+      formatRecommendation(makeRepository(`latest-${index}`), "other-run"),
+    ).join("\n");
+    const candidate = makeRepository("candidate");
+    const mock = queuedFetch([
+      jsonResponse({ name: "starback-inbox" }),
+      jsonResponse([initial]),
+      jsonResponse([initial]),
+      jsonResponse([candidate]),
+      jsonResponse({ ...initial, body: latestBody }),
+      jsonResponse(makeIssue(11, "StarBack Inbox · August 2026 · #2", formatRecommendation(candidate, "new-run")), 201),
+    ]);
+
+    await runDiscover({
+      client: new GitHubClient("token", mock.fetch),
+      repository: "owner/starback",
+      runId: "new-run",
+      eventName: "watch",
+      event: watchEvent(),
+      now,
+      log: () => undefined,
+    });
+
+    assert.equal(mock.calls.some((call) => call.init?.method === "PATCH"), false);
+    const createCall = mock.calls.find((call) => call.init?.method === "POST" && String(call.input).endsWith("/issues"));
+    assert.notEqual(createCall, undefined);
+    assert.match(requestBody(createCall!), /StarBack Inbox · August 2026 · #2/);
   });
 });

@@ -4,10 +4,16 @@ import { runStar, validateStarEvent } from "../src/star.ts";
 import { GitHubClient, type GitHubIssue } from "../src/github.ts";
 import { makeIssue, makeRepository, jsonResponse, queuedFetch, requestBody } from "./helpers.ts";
 
-function starEvent(oldBody: string, newBody: string, issueOverrides: Partial<GitHubIssue> = {}) {
+function starEvent(
+  oldBody: string,
+  newBody: string,
+  issueOverrides: Partial<GitHubIssue> = {},
+  sender: { login: string; type: string } = { login: "owner", type: "User" },
+) {
   return {
     action: "edited",
     repository: { full_name: "owner/starback", owner: { login: "owner", type: "User" } },
+    sender,
     issue: makeIssue(7, "StarBack Inbox · August 2026", newBody, issueOverrides),
     changes: { body: { from: oldBody } },
   };
@@ -64,15 +70,39 @@ describe("star workflow", () => {
     const latestBody = "- [ ] alice/target";
     const mock = queuedFetch([jsonResponse(makeIssue(7, "StarBack Inbox · August 2026", latestBody))]);
 
+    let creations = 0;
     await runStar({
       client: new GitHubClient("github-token", mock.fetch),
-      starClient: new GitHubClient("pat", mock.fetch),
+      createStarClient: () => {
+        creations += 1;
+        return new GitHubClient("pat", mock.fetch);
+      },
       repository: "owner/starback",
       event: starEvent(oldBody, eventBody),
       log: () => undefined,
     });
 
     assert.equal(mock.calls.length, 1);
+    assert.equal(creations, 0);
+  });
+
+  it("ignores an ordinary body edit without creating a Star client", async () => {
+    const oldBody = "- [ ] alice/target";
+    const newBody = "A note was edited\n- [ ] alice/target";
+    let creations = 0;
+
+    await runStar({
+      client: new GitHubClient("github-token", queuedFetch([]).fetch),
+      createStarClient: () => {
+        creations += 1;
+        return new GitHubClient("pat");
+      },
+      repository: "owner/starback",
+      event: starEvent(oldBody, newBody),
+      log: () => undefined,
+    });
+
+    assert.equal(creations, 0);
   });
 
   it("continues after a target failure and restores only failed rows in the latest body", async () => {
@@ -89,16 +119,21 @@ describe("star workflow", () => {
       jsonResponse(makeIssue(7, "StarBack Inbox · August 2026", latestBody)),
     ]);
 
+    let creations = 0;
     await assert.rejects(
       runStar({
         client: new GitHubClient("github-token", mock.fetch),
-        starClient: new GitHubClient("pat", mock.fetch),
+        createStarClient: () => {
+          creations += 1;
+          return new GitHubClient("pat", mock.fetch);
+        },
         repository: "owner/starback",
         event: starEvent(oldBody, eventBody),
         log: () => undefined,
       }),
       /alice\/fail/,
     );
+    assert.equal(creations, 1);
 
     const patch = mock.calls.find((call) => call.init?.method === "PATCH");
     assert.notEqual(patch, undefined);
@@ -118,15 +153,21 @@ describe("star workflow", () => {
       jsonResponse(makeIssue(7, "StarBack Inbox · August 2026", newBody)),
     ]);
 
+    let creations = 0;
     await assert.rejects(
       runStar({
         client: new GitHubClient("github-token", mock.fetch),
+        createStarClient: () => {
+          creations += 1;
+          throw new Error("Missing required environment variable: STARBACK_TOKEN");
+        },
         repository: "owner/starback",
         event: starEvent(oldBody, newBody),
         log: () => undefined,
       }),
       /STARBACK_TOKEN/,
     );
+    assert.equal(creations, 1);
 
     const patch = mock.calls.find((call) => call.init?.method === "PATCH");
     assert.notEqual(patch, undefined);
@@ -148,7 +189,17 @@ describe("star workflow", () => {
     assert.equal(mock.calls.length, 0);
   });
 
-  it("rejects non-owner Inbox edits before using the user token", () => {
+  it("rejects a non-owner sender before any Issue/API/PAT operation", () => {
+    const mock = queuedFetch([]);
+
+    assert.throws(
+      () => validateStarEvent(starEvent("", "", {}, { login: "someone-else", type: "User" }), "owner/starback"),
+      /edit an Inbox Issue/,
+    );
+    assert.equal(mock.calls.length, 0);
+  });
+
+  it("requires the Issue author to remain the repository owner", () => {
     const issue = makeIssue(7, "StarBack Inbox · August 2026", "", {
       user: { login: "someone-else", type: "User" },
     });
