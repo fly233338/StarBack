@@ -19,7 +19,7 @@ describe("repository ranking", () => {
 
     assert.deepEqual(
       rankRepositories(repositories, now).map(({ repository }) => repository.name),
-      ["valid"],
+      ["empty", "valid"],
     );
   });
 

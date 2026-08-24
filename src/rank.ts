@@ -31,7 +31,6 @@ export function isEligibleRepository(repository: GitHubRepository): boolean {
     repository.fork !== true &&
     repository.archived !== true &&
     repository.disabled !== true &&
-    repository.size !== 0 &&
     repository.pushed_at !== null
   );
 }
