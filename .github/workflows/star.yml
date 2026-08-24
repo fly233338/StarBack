@@ -14,12 +14,14 @@ jobs:
       github.event_name == 'issues' &&
       github.event.action == 'edited' &&
       github.event.repository.owner.type == 'User' &&
+      github.event.sender.type == 'User' &&
+      github.event.sender.login == github.repository_owner &&
       github.event.issue.user.login == github.repository_owner &&
       github.event.issue.pull_request == null &&
       contains(github.event.issue.labels.*.name, 'starback-inbox')
     concurrency:
       group: starback-star-${{ github.repository }}-${{ github.event.issue.number }}
-      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-latest
     steps:
       - name: Check out StarBack

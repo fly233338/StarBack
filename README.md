@@ -21,7 +21,7 @@ flowchart TD
     ST -->|STARBACK_TOKEN| U[查询并执行用户级 Star]
 ```
 
-两条工作流都使用 Node 24 原生 TypeScript。发现任务按仓库串行更新 Inbox；Star 任务按 Issue 编号串行处理。GitHub Actions 使用 `GITHUB_TOKEN` 更新 Inbox 不会递归触发新的 workflow。
+两条工作流都使用 Node 24 原生 TypeScript。发现任务按仓库串行更新 Inbox；Star 任务按 Issue 编号串行处理。每个并发组使用 `queue: max`，最多保留 100 个 pending run，避免密集事件替换排队任务。GitHub Actions 使用 `GITHUB_TOKEN` 更新 Inbox 不会递归触发新的 workflow。
 
 ## 发现与排名
 
@@ -90,7 +90,7 @@ workflow 会重新读取最新 Issue。如果你在它开始前取消勾选，St
 
 - `GITHUB_TOKEN` 只负责仓库元数据、Issue、标签和公开仓库读取，以及 Inbox 写入。
 - `STARBACK_TOKEN` 代表仓库 owner 的 GitHub 身份，仅调用用户级 Starring API。
-- workflow 条件和脚本都会检查个人仓库、Issue owner、非 Pull Request 和 `starback-inbox` 标签。
+- workflow 条件和脚本都会同时检查事件编辑者（`sender`）与 Issue 作者是个人仓库 owner，并检查个人仓库、非 Pull Request 和 `starback-inbox` 标签。
 - 不要把 PAT 写进 Issue、仓库文件、workflow 日志或公开评论。
 - v0.1 不支持组织仓库、受信任成员代 Star、后台自动 Star 或取消勾选自动 Unstar。
 
