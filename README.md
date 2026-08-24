@@ -96,19 +96,18 @@ jobs:
 
 ### 3. 创建 owner PAT
 
-在你的 GitHub 账号中创建 fine-grained personal access token：
+在你的 GitHub 账号中创建 Personal access token (classic)：
 
-- Resource owner 选择你的账号。
-- Repository access 只选择这个调用方仓库。
-- Repository permissions：`Metadata: Read-only`。
-- Account permissions：`Starring: Read and write`。
-- PAT 不需要 `Issues: write`。
+- 进入 `Settings → Developer settings → Personal access tokens → Tokens (classic)`。
+- 创建新的 classic token。
+- Scope 勾选 `public_repo`。
+- 不需要额外授予 Issue 权限；Inbox 的创建和更新由 GitHub Actions 自动提供的 `GITHUB_TOKEN` 完成。
 
 在调用方仓库的 `Settings → Secrets and variables → Actions` 中新建：
 
 ```text
 Name: STARBACK_TOKEN
-Secret: 你的 fine-grained PAT
+Secret: 你的 classic PAT
 ```
 
 ### 4. 添加 Star caller
@@ -219,7 +218,7 @@ Inbox 可以由 `github-actions[bot]` 创建；授权依据是本次 `issues.edi
 
 ### 勾选后 workflow 失败
 
-检查调用方 caller 是否授予 `issues: write`，`STARBACK_TOKEN` 是否存在且有效、Resource owner 是否为调用方仓库 owner、Repository access 是否只包含该调用方仓库，以及 `Starring: Read and write` 是否已授予。失败项目会被恢复为未勾选。
+检查调用方 caller 是否授予 `issues: write`，`STARBACK_TOKEN` 是否仍有效，以及 classic PAT 是否包含 `public_repo` scope。失败项目会被恢复为未勾选。
 
 ### 为什么没有推荐某个仓库
 
