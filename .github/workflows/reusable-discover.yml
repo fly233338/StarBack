@@ -1,10 +1,7 @@
-name: StarBack Discover
+name: StarBack Discover (Reusable)
 
 on:
-  watch:
-    types: [started]
-  schedule:
-    - cron: "17 0 1 * *"
+  workflow_call:
 
 permissions:
   contents: read
@@ -17,8 +14,13 @@ jobs:
       queue: max
     runs-on: ubuntu-latest
     steps:
-      - name: Check out StarBack
+      - name: Check out StarBack engine
         uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .starback
+          persist-credentials: false
 
       - name: Set up Node 24
         uses: actions/setup-node@v7
@@ -26,6 +28,6 @@ jobs:
           node-version: 24
 
       - name: Discover repositories
-        run: npm run discover
+        run: node .starback/scripts/discover.ts
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}

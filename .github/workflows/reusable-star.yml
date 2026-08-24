@@ -1,0 +1,37 @@
+name: StarBack Star (Reusable)
+
+on:
+  workflow_call:
+    secrets:
+      STARBACK_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  star:
+    concurrency:
+      group: starback-star-${{ github.repository }}-${{ github.event.issue.number }}
+      queue: max
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out StarBack engine
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .starback
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Star selected repositories
+        run: node .starback/scripts/star.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STARBACK_TOKEN: ${{ secrets.STARBACK_TOKEN }}

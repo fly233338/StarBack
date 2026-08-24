@@ -2,67 +2,97 @@
 
 ## 目标与边界
 
-StarBack 是运行在用户个人 GitHub 仓库中的 GitHub 原生工具。它只使用 GitHub Actions、Issues 和 GitHub REST API，不使用服务器、数据库、队列服务或编译后的运行产物。
+StarBack 是一个可复用的 GitHub 原生引擎。它运行在调用方个人 GitHub 仓库的 Actions 中，只使用 GitHub Actions、Issues 和 GitHub REST API，不使用服务器、数据库、外部队列或编译后的运行产物。
 
-v0.1 只支持个人账号拥有的 StarBack 仓库，不支持组织仓库、多人代表组织执行 Star、自动取消 Star 或永久推荐去重。
+v0.1 只支持个人账号拥有的调用方仓库，不支持组织仓库、多人代表组织执行 Star、自动取消 Star 或永久推荐去重。StarBack 源码仓库同时是引擎发布仓库和第一个 dogfood 调用方。
 
-运行时使用 Node 24 的原生 TypeScript 支持。入口只有：
+引擎运行时使用 Node 24 原生 TypeScript。调用方负责事件、权限和 Secret；reusable workflow 负责取得精确引擎源码并运行入口；TypeScript 负责事件验证、GitHub API、排名、Inbox 和 Star 逻辑。
 
-- `node scripts/discover.ts`：处理 `watch` 和 `schedule` 事件。
-- `node scripts/star.ts`：处理 `issues.edited` 事件。
-
-## 组件边界
+## 三层组件边界
 
 ```text
-GitHub event
-    |
-    +--> discover.yml --> scripts/discover.ts
-    |                         |
-    |                         +--> GitHub REST API (GITHUB_TOKEN)
-    |                         +--> ranking and Inbox modules
-    |
-    +--> star.yml -----> scripts/star.ts
-                              |
-                              +--> issue/repository reads (GITHUB_TOKEN)
-                              +--> user starring reads/writes (STARBACK_TOKEN)
+调用方仓库 workflow
+    | 事件、github.repository、github.token、权限、STARBACK_TOKEN
+    |  self: ./.github/workflows/reusable-*.yml
+    |  external: fly233338/StarBack/.github/workflows/reusable-*.yml@v0.1.0
+    v
+reusable workflow
+    |  job.workflow_repository + job.workflow_sha
+    |  checkout 引擎到 .starback
+    v
+StarBack TypeScript 引擎
+    |  node .starback/scripts/discover.ts
+    |  node .starback/scripts/star.ts
+    v
+调用方仓库的 GitHub API 资源
 ```
 
-公共的 GitHub API 客户端统一负责认证头、版本头、User-Agent、JSON 编解码和非成功状态处理。排名、月份标题、Inbox 页面解析、checkbox diff 和失败恢复保持为纯函数或只依赖注入的逻辑，便于使用 Node 内置 test runner 和注入式 `fetch` 验证。
+### 引擎来源与运行上下文
+
+- 引擎代码来源由 reusable workflow 内的 `job.workflow_repository` 和 `job.workflow_sha` 确定。checkout 使用这两个值并放入 `.starback`，不会默认 checkout 调用方仓库。
+- 运行上下文始终属于调用方：事件 JSON、`GITHUB_REPOSITORY`、`GITHUB_RUN_ID`、`GITHUB_EVENT_NAME`、默认环境变量和 `github.token` 都指向触发调用方 workflow 的仓库。
+- 用户身份属于调用方：只有 Star reusable workflow 接收调用方显式传入的 `STARBACK_TOKEN`，并且只用于用户级 Starring API。
+- 同仓库相对调用使用 caller 同一提交；外部调用使用其引用解析到的精确版本。外部发布使用 release tag，预发布验收使用 commit SHA。
+
+GitHub.com 提供 `job.workflow_repository` 和 `job.workflow_sha`；v0.1 不支持 GitHub Enterprise Server。
+
+## 仓库内文件与公共接口
+
+```text
+.github/workflows/
+  reusable-discover.yml       # workflow_call，无 inputs、无用户 Secret
+  reusable-star.yml           # workflow_call，必需 STARBACK_TOKEN
+  starback-discover.yml       # StarBack 自用 watch/schedule caller
+  starback-star.yml           # StarBack 自用 issues caller
+scripts/
+  discover.ts                 # 被 reusable discover 运行
+  star.ts                     # 被 reusable star 运行
+src/                          # 纯逻辑与 GitHub REST 客户端
+test/                         # Node 内置 test runner + fetch mock
+```
+
+Reusable workflow 的公共接口只有 `workflow_call`：
+
+- `reusable-discover.yml` 无 inputs、无用户 Secret，使用调用方 `github.token`。
+- `reusable-star.yml` 声明必需的 `workflow_call.secrets.STARBACK_TOKEN`，不使用 `secrets: inherit`。
+- Caller 授予 `contents: read`、`issues: write`；called workflow 只能维持或降低调用方权限，不能提升权限。
 
 ## 事件链
 
 ### Watch 发现链
 
-1. `watch: [started]` 触发 `discover.yml`。
-2. 工作流只授予 `contents: read` 和 `issues: write`，以仓库级 concurrency 串行执行。
-3. `discover.ts` 验证事件 action、仓库归属和事件仓库与 `GITHUB_REPOSITORY` 一致；仅接受个人账号仓库。
-4. 确保 `starback-inbox` 标签存在。缺失时创建颜色 `0969da`、描述 `Managed by StarBack` 的标签。
-5. 关闭标题合法、带此标签且月份早于当前 UTC 月份的开放 Inbox。
-6. 分页读取 `sender` 自己拥有的公开仓库，过滤 fork、archived、disabled、`size === 0` 和没有 `pushed_at` 的仓库，按确定性评分排序。
-7. 扫描当月所有 Inbox，按大小写不敏感的 `owner/repo` 排除已推荐目标；同一目标只在同一 UTC 月内去重。
-8. 将排名最高且当月未出现的 1 条推荐追加到当月最后一页；当前页满时创建下一页。每页最多保存 100 条，容量会跨多个 watch 事件累计。推荐行带本次 `GITHUB_RUN_ID` 标记，已有相同标记的本次运行直接成功退出。
+1. 调用方的 `watch: [started]` 触发 discover caller；StarBack 自用 caller 还在每月 1 日 `00:17 UTC` 触发 schedule。
+2. Caller 授予 `contents: read` 和 `issues: write`，并调用本提交或外部固定版本的 `reusable-discover.yml`。
+3. Reusable job 按调用方仓库建立 `queue: max` concurrency，使用 Node 24 checkout 精确引擎源码到 `.starback`，然后运行 `node .starback/scripts/discover.ts`。
+4. `discover.ts` 验证事件 action、仓库归属和事件仓库与调用方 `GITHUB_REPOSITORY` 一致；仅接受个人账号仓库。
+5. 确保 `starback-inbox` 标签存在。缺失时创建颜色 `0969da`、描述 `Managed by StarBack` 的标签，并关闭标题合法、带此标签且月份早于当前 UTC 月份的开放 Inbox。
+6. 分页读取 stargazer 自己拥有的公开仓库，按确定性评分排序，排除当月已经出现的目标。
+7. 每次 watch 事件只将去重后排名最高的 1 条推荐追加到当月最后一页；当前页满时创建下一页。每页最多保存 100 条，容量跨多个 watch 事件累计。
+8. 推荐行带本次 `GITHUB_RUN_ID` 标记；已有相同标记的本次运行直接成功退出。
 
 ### Schedule 维护链
 
-每月 1 日 `00:17 UTC` 触发同一入口。Schedule 只执行第 5 步：关闭开放且标题格式合法、月份早于当前 UTC 月份并带 `starback-inbox` 标签的 Inbox；不会读取 stargazer 或写入推荐。
+Schedule 只执行过期 Inbox 维护，不读取 stargazer，不写入推荐。外部 caller 可按同样方式自行提供 schedule；StarBack 自用 caller 必须保留月度 schedule。
 
 ### Checkbox Star 链
 
-1. `issues: [edited]` 触发 `star.yml`。job 条件先检查事件是个人仓库 owner 编辑了带 `starback-inbox` 标签的 Issue，只有满足条件的 job 才获得 `STARBACK_TOKEN`。Inbox 可以由 `github-actions[bot]` 创建。
-2. `star.ts` 再次验证事件 sender 是仓库 owner、Issue 非 Pull Request、标签和 body 变化；不以 Issue 创建者作为授权条件，只处理旧 body 中 `[ ]` 严格变为新 body 中 `[x]` 的合法 `owner/repo` 行。
-3. 使用 `GITHUB_TOKEN` 重新读取 Issue。目标已取消勾选时跳过，保留用户最新编辑。
-4. 对每个仍勾选的目标确认公开可访问；使用 `STARBACK_TOKEN` 查询当前用户是否已 Star。已 Star 则幂等跳过，未 Star 则以 `PUT /user/starred/{owner}/{repo}` 完成 Star，并要求 `204`。
-5. 多个目标逐项处理。失效目标、缺少 PAT 或 API 失败不会阻断其他目标；全部处理后重新读取最新 body，只将失败目标恢复为 `[ ]`，最后以聚合错误结束，不发布评论。
+1. 调用方的 `issues: [edited]` 触发 star caller。Caller 条件检查个人仓库、事件 `sender` 是仓库 owner、Issue 非 Pull Request 和 `starback-inbox` 标签，然后只显式传递 `secrets.STARBACK_TOKEN`。Inbox 可以由 `github-actions[bot]` 创建，Issue 作者不是授权依据。
+2. Reusable job 按调用方仓库和 Issue 编号建立 `queue: max` concurrency，checkout 精确引擎源码到 `.starback`，运行 `node .starback/scripts/star.ts`。
+3. `star.ts` 再次验证事件 sender 是调用方仓库 owner、事件仓库匹配、Issue 非 Pull Request、标签和 body 变化；只处理旧 body 中 `[ ]` 严格变为新 body 中 `[x]` 的合法 `owner/repo` 行。
+4. 使用调用方 `GITHUB_TOKEN` 重新读取 Issue。目标已取消勾选时跳过，尊重用户最新编辑。
+5. 对每个仍勾选的目标确认公开可访问；使用 `STARBACK_TOKEN` 查询当前用户是否已 Star。已 Star 则幂等跳过，未 Star 则以 `PUT /user/starred/{owner}/{repo}` 完成 Star，并要求 `204`。
+6. 多个目标逐项处理。失效目标、缺少 PAT 或 API 失败不会阻断其他目标；处理后重新读取最新 body，只将失败目标恢复为 `[ ]`，最后以聚合错误结束，不发布评论。
 
 ## Token 信任边界
 
-- `GITHUB_TOKEN` 是 Actions 自动令牌，只用于读取仓库、用户公开仓库、Issue 和目标仓库，以及创建/更新/关闭 Inbox 和标签。
-- `STARBACK_TOKEN` 是仓库 owner 提供的 fine-grained PAT，只用于代表 owner 查询其 Star 状态和调用用户级 Star API。它不用于 Issue 写入，也不进入无关事件的 job。
-- workflow 层的 owner、标签和事件条件是减少 PAT 暴露面的第一道边界；脚本层重复验证，不能仅依赖 workflow 条件。
+- 调用方的 `GITHUB_TOKEN` 只用于读取调用方仓库、用户公开仓库、Issue 和目标仓库，以及创建/更新/关闭调用方 Inbox 和标签。
+- `STARBACK_TOKEN` 是调用方仓库 owner 提供的 fine-grained PAT，只由 Star caller 显式传给 reusable star，并仅用于代表 owner 查询其 Star 状态和调用用户级 Star API。它不用于 Issue 写入，也不进入无关事件的 job。
+- Caller 层的 sender、个人仓库、标签和 Pull Request 条件是减少 PAT 暴露面的第一道边界；脚本层重复验证，不能仅依赖 caller 条件。
+- Reusable workflow 不使用 `secrets: inherit`，也不从引擎仓库读取用户 Secret。
 
 ## Inbox 数据格式与状态
 
-Inbox 标题只接受以下格式：
+Inbox 始终创建在当前调用方仓库，而不是 StarBack 引擎仓库。标题只接受以下格式：
 
 ```text
 StarBack Inbox · August 2026
@@ -81,7 +111,7 @@ Issue body 是用户可编辑状态：勾选表示请求 Star，取消勾选表�
 
 ## 排名规则
 
-对过滤后的候选仓库计算：
+对候选仓库计算：
 
 ```text
 35 × log1p(stars) / log1p(maxStars)
@@ -92,9 +122,9 @@ Issue body 是用户可编辑状态：勾选表示请求 Star，取消勾选表�
 +  5 if homepage is non-empty
 ```
 
-`maxStars` 或 `maxForks` 为 0 时对应项为 0。按总分降序后，依次按 Star 数降序、`pushed_at` 降序、`full_name` 升序稳定排序。
+`maxStars` 或 `maxForks` 为 0 时对应项为 0。候选仍过滤 fork、archived、disabled 和没有 `pushed_at` 的仓库；Star、活跃时间、Fork 和元数据权重保持不变。按总分降序后，依次按 Star 数降序、`pushed_at` 降序、`full_name` 升序稳定排序。
 
-## API 约定、并发与失败行为
+## API、权限与并发
 
 所有 REST 请求发送：
 
@@ -102,12 +132,10 @@ Issue body 是用户可编辑状态：勾选表示请求 Star，取消勾选表�
 - `X-GitHub-Api-Version: 2026-03-10`
 - 固定 `User-Agent: StarBack/0.1.0`
 
-API 分页使用 `per_page=100`，按响应的 `Link` 关系继续读取。发现工作流以仓库级 `queue: max` 串行更新 Inbox；Star 工作流按 Issue 编号串行排队。GitHub 自己使用 `GITHUB_TOKEN` 更新 Issue 不会再次触发新的 workflow。
+API 分页使用 `per_page=100`，按响应的 `Link` 关系继续读取。Discover reusable workflow 以调用方仓库为 concurrency group；Star reusable workflow 以调用方仓库和 Issue 编号为 concurrency group；两者均使用 `queue: max` 串行更新调用方 Inbox。GitHub 使用调用方 `GITHUB_TOKEN` 更新 Issue 不会递归触发新的 workflow。
 
-单个候选失败时记录失败并继续。发现链没有合格候选、或候选全部在当月出现过时成功退出并记录原因。Star 链在尽力处理并恢复失败 checkbox 后返回失败状态，让 workflow 明确失败；不会用兼容旧格式的隐藏兜底掩盖错误。
+单个候选失败时记录失败并继续。发现链没有合格候选、或候选全部在当月出现过时成功退出并记录原因。Star 链在尽力处理并恢复失败 checkbox 后返回失败状态，让调用方 workflow 明确失败；不会用兼容旧格式的隐藏兜底掩盖错误。
 
-## 配置接口
+## 版本与发布
 
-两条入口都需要 `GITHUB_TOKEN`、`GITHUB_REPOSITORY` 和 `GITHUB_RUN_ID`；入口根据 `GITHUB_EVENT_NAME` 区分事件类型。`star.ts` 另外需要 `STARBACK_TOKEN`，仅在存在待处理的 checkbox 转换时读取。
-
-工作流固定使用 Node 24、`actions/checkout@v7`、`actions/setup-node@v7`，不生成 `dist`，运行阶段不执行 `npm ci`。
+外部 caller 固定引用公开 StarBack 仓库的 release tag，例如 `fly233338/StarBack/.github/workflows/reusable-discover.yml@v0.1.0`。发布前使用实现提交 SHA 做外部验收；`v0.1.0` 创建后不移动，后续引擎变更使用新版本 tag。本次重构不创建 tag 或 Release。

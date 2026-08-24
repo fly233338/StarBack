@@ -1,0 +1,24 @@
+name: StarBack Star
+
+on:
+  issues:
+    types: [edited]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  star:
+    name: Star selected repositories
+    if: >-
+      github.event_name == 'issues' &&
+      github.event.action == 'edited' &&
+      github.event.repository.owner.type == 'User' &&
+      github.event.sender.type == 'User' &&
+      github.event.sender.login == github.repository_owner &&
+      github.event.issue.pull_request == null &&
+      contains(github.event.issue.labels.*.name, 'starback-inbox')
+    uses: ./.github/workflows/reusable-star.yml
+    secrets:
+      STARBACK_TOKEN: ${{ secrets.STARBACK_TOKEN }}

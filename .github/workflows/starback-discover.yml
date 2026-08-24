@@ -1,0 +1,16 @@
+name: StarBack Discover
+
+on:
+  watch:
+    types: [started]
+  schedule:
+    - cron: "17 0 1 * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  discover:
+    name: Discover repositories
+    uses: ./.github/workflows/reusable-discover.yml
