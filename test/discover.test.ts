@@ -26,13 +26,14 @@ describe("discover workflow", () => {
       homepage: "https://example.com",
     });
     const already = makeRepository("already", { stargazers_count: 100 });
+    const lower = makeRepository("lower", { stargazers_count: 1 });
     const mock = queuedFetch([
       jsonResponse({ message: "Not Found" }, 404),
       jsonResponse({ name: "starback-inbox", color: "0969da", description: "Managed by StarBack" }, 201),
       jsonResponse([oldIssue, currentIssue]),
       jsonResponse({ ...oldIssue, state: "closed" }),
       jsonResponse([currentIssue]),
-      jsonResponse([already, fresh]),
+      jsonResponse([already, fresh, lower]),
       jsonResponse({ ...currentIssue, body: `User edit\n${currentIssue.body}` }),
       jsonResponse({ ...currentIssue, body: `${currentIssue.body}\n${formatRecommendation(fresh, "run-1")}` }),
     ]);
@@ -54,6 +55,7 @@ describe("discover workflow", () => {
     const updatedBody = JSON.parse(requestBody(patchCalls[1])).body as string;
     assert.match(updatedBody, /User edit/);
     assert.match(updatedBody, /alice\/fresh/);
+    assert.doesNotMatch(updatedBody, /alice\/lower/);
     assert.doesNotMatch(updatedBody, /alice\/already.*starback-run/);
     assert.equal(mock.calls[1].init?.method, "POST");
     assert.match(requestBody(mock.calls[1]), /"color":"0969da"/);
@@ -137,8 +139,10 @@ describe("discover workflow", () => {
 
     const createCall = mock.calls.find((call) => call.init?.method === "POST" && String(call.input).endsWith("/issues"));
     assert.notEqual(createCall, undefined);
-    assert.match(requestBody(createCall!), /StarBack Inbox · August 2026 · #2/);
-    assert.match(requestBody(createCall!), /alice\/new-/);
+    const createdIssue = JSON.parse(requestBody(createCall!)) as { title: string; body: string };
+    assert.equal(createdIssue.title, "StarBack Inbox · August 2026 · #2");
+    assert.equal(createdIssue.body.split("\n").length, 1);
+    assert.match(createdIssue.body, /alice\/new-/);
   });
 
   it("creates the next page when the latest body became full without patching the old page", async () => {

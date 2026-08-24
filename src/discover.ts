@@ -80,7 +80,7 @@ export async function runDiscover(options: DiscoverOptions): Promise<void> {
     return;
   }
 
-  await writeRecommendations(options.client, options.repository, options.runId, candidates, currentMonth, now, log);
+  await writeRecommendations(options.client, options.repository, options.runId, candidates.slice(0, 1), currentMonth, now, log);
 }
 
 export function validateWatchEvent(event: DiscoverEvent, repository: string): string {

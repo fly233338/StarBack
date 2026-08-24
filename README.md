@@ -31,7 +31,7 @@ flowchart TD
 2. 关闭标题合法、月份早于当前 UTC 月份的开放 Inbox。
 3. 分页读取 stargazer 自己拥有的公开仓库。
 4. 过滤 fork、archived、disabled、空仓库（`size === 0`）以及没有 `pushed_at` 的仓库。
-5. 排除当月 Inbox 已经出现过的目标，并追加到最后一页。
+5. 排除当月 Inbox 已经出现过的目标，只将去重后排名最高的 1 个目标追加到最后一页。
 
 评分为：
 
@@ -44,7 +44,7 @@ flowchart TD
 +  5（有 homepage）
 ```
 
-最大 Star 数或 Fork 数为 0 时，对应分项为 0。相同总分依次按 Star 数降序、`pushed_at` 降序、`full_name` 升序排列。每个 Inbox 页面最多有 100 条生成推荐，满页后创建 `#2`、`#3` 等后续页面。
+最大 Star 数或 Fork 数为 0 时，对应分项为 0。相同总分依次按 Star 数降序、`pushed_at` 降序、`full_name` 升序排列。一次 `watch: started` 最多产生 1 条推荐；每个 Inbox 页面最多有 100 条生成推荐，容量跨多个事件累计，满页后创建 `#2`、`#3` 等后续页面。
 
 推荐行示例：
 
@@ -72,7 +72,7 @@ StarBack v0.1 只支持个人账号名下的仓库。
    - Secret：刚创建的 PAT
 6. 确认 `.github/workflows/discover.yml` 和 `.github/workflows/star.yml` 已启用。
 
-`GITHUB_TOKEN` 由 Actions 自动提供；Issue 创建、更新、关闭和标签操作都由它完成。`STARBACK_TOKEN` 只注入到通过 owner、Inbox 标签和 Issue 类型检查的 Star job，并且只用于用户级 Star API。
+`GITHUB_TOKEN` 由 Actions 自动提供；Issue 创建、更新、关闭和标签操作都由它完成。`STARBACK_TOKEN` 只注入到事件 `sender` 是仓库 owner、且通过 Inbox 标签和 Issue 类型检查的 Star job，并且只用于用户级 Star API。
 
 ## 使用方式
 
@@ -90,7 +90,7 @@ workflow 会重新读取最新 Issue。如果你在它开始前取消勾选，St
 
 - `GITHUB_TOKEN` 只负责仓库元数据、Issue、标签和公开仓库读取，以及 Inbox 写入。
 - `STARBACK_TOKEN` 代表仓库 owner 的 GitHub 身份，仅调用用户级 Starring API。
-- workflow 条件和脚本都会同时检查事件编辑者（`sender`）与 Issue 作者是个人仓库 owner，并检查个人仓库、非 Pull Request 和 `starback-inbox` 标签。
+- workflow 条件和脚本都会检查事件编辑者（`sender`）是个人仓库 owner，并检查个人仓库、非 Pull Request 和 `starback-inbox` 标签。Inbox 可由 `github-actions[bot]` 创建，Issue 作者不是授权依据。
 - 不要把 PAT 写进 Issue、仓库文件、workflow 日志或公开评论。
 - v0.1 不支持组织仓库、受信任成员代 Star、后台自动 Star 或取消勾选自动 Unstar。
 

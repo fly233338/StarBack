@@ -64,6 +64,29 @@ describe("star workflow", () => {
     assert.equal(mock.calls.some((call) => call.init?.method === "PUT"), false);
   });
 
+  it("allows the owner to edit an Inbox created by github-actions[bot]", async () => {
+    const oldBody = "- [ ] alice/target";
+    const newBody = "- [x] alice/target";
+    const botIssue = makeIssue(7, "StarBack Inbox · August 2026", newBody, {
+      user: { login: "github-actions[bot]", type: "Bot" },
+    });
+    const mock = queuedFetch([
+      jsonResponse(botIssue),
+      jsonResponse(makeRepository("target")),
+      jsonResponse(undefined, 204),
+    ]);
+
+    await runStar({
+      client: new GitHubClient("github-token", mock.fetch),
+      starClient: new GitHubClient("pat", mock.fetch),
+      repository: "owner/starback",
+      event: starEvent(oldBody, newBody, { user: botIssue.user }),
+      log: () => undefined,
+    });
+
+    assert.equal(mock.calls.length, 3);
+  });
+
   it("skips a target that the user unchecked before processing", async () => {
     const oldBody = "- [ ] alice/target";
     const eventBody = "- [x] alice/target";
@@ -199,14 +222,4 @@ describe("star workflow", () => {
     assert.equal(mock.calls.length, 0);
   });
 
-  it("requires the Issue author to remain the repository owner", () => {
-    const issue = makeIssue(7, "StarBack Inbox · August 2026", "", {
-      user: { login: "someone-else", type: "User" },
-    });
-
-    assert.throws(
-      () => validateStarEvent(starEvent("", "", { user: issue.user }), "owner/starback"),
-      /repository owner/,
-    );
-  });
 });

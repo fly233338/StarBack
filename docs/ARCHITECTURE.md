@@ -40,7 +40,7 @@ GitHub event
 5. 关闭标题合法、带此标签且月份早于当前 UTC 月份的开放 Inbox。
 6. 分页读取 `sender` 自己拥有的公开仓库，过滤 fork、archived、disabled、`size === 0` 和没有 `pushed_at` 的仓库，按确定性评分排序。
 7. 扫描当月所有 Inbox，按大小写不敏感的 `owner/repo` 排除已推荐目标；同一目标只在同一 UTC 月内去重。
-8. 将最多 100 条生成推荐追加到当月最后一页；满页时创建下一页。推荐行带本次 `GITHUB_RUN_ID` 标记，已有相同标记的本次运行直接成功退出。
+8. 将排名最高且当月未出现的 1 条推荐追加到当月最后一页；当前页满时创建下一页。每页最多保存 100 条，容量会跨多个 watch 事件累计。推荐行带本次 `GITHUB_RUN_ID` 标记，已有相同标记的本次运行直接成功退出。
 
 ### Schedule 维护链
 
@@ -48,8 +48,8 @@ GitHub event
 
 ### Checkbox Star 链
 
-1. `issues: [edited]` 触发 `star.yml`。job 条件先检查事件是个人仓库 owner 编辑了带 `starback-inbox` 标签的 Issue，只有满足条件的 job 才获得 `STARBACK_TOKEN`。
-2. `star.ts` 再次验证仓库 owner、Issue owner、Issue 非 Pull Request、标签和 body 变化；只处理旧 body 中 `[ ]` 严格变为新 body 中 `[x]` 的合法 `owner/repo` 行。
+1. `issues: [edited]` 触发 `star.yml`。job 条件先检查事件是个人仓库 owner 编辑了带 `starback-inbox` 标签的 Issue，只有满足条件的 job 才获得 `STARBACK_TOKEN`。Inbox 可以由 `github-actions[bot]` 创建。
+2. `star.ts` 再次验证事件 sender 是仓库 owner、Issue 非 Pull Request、标签和 body 变化；不以 Issue 创建者作为授权条件，只处理旧 body 中 `[ ]` 严格变为新 body 中 `[x]` 的合法 `owner/repo` 行。
 3. 使用 `GITHUB_TOKEN` 重新读取 Issue。目标已取消勾选时跳过，保留用户最新编辑。
 4. 对每个仍勾选的目标确认公开可访问；使用 `STARBACK_TOKEN` 查询当前用户是否已 Star。已 Star 则幂等跳过，未 Star 则以 `PUT /user/starred/{owner}/{repo}` 完成 Star，并要求 `204`。
 5. 多个目标逐项处理。失效目标、缺少 PAT 或 API 失败不会阻断其他目标；全部处理后重新读取最新 body，只将失败目标恢复为 `[ ]`，最后以聚合错误结束，不发布评论。
@@ -77,7 +77,7 @@ StarBack Inbox · August 2026 · #2
 
 Issue body 是用户可编辑状态：勾选表示请求 Star，取消勾选表示不再请求。HTML run marker 不参与渲染，只用于同一 workflow run 幂等。合法目标严格是一个 `owner/repo` 路径，比较和去重大小写不敏感。
 
-每页最多保存 100 条生成推荐。新增内容总是基于更新前重新读取的 body 追加，保留用户正文和其他 checkbox；Star 失败恢复也只改变对应目标的 checkbox。
+每次 `watch: started` 最多生成 1 条推荐；每页最多保存 100 条生成推荐，容量跨多个事件累计。新增内容总是基于更新前重新读取的 body 追加，保留用户正文和其他 checkbox；Star 失败恢复也只改变对应目标的 checkbox。
 
 ## 排名规则
 

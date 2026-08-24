@@ -39,7 +39,7 @@ export async function runStar(options: StarOptions): Promise<void> {
   }
 
   const currentIssue = await options.client.getIssue(options.repository, issue.number);
-  validateCurrentIssue(currentIssue, options.repository);
+  validateCurrentIssue(currentIssue);
   const currentBody = currentIssue.body ?? "";
   const selected = transitions.filter((transition) =>
     getCheckboxRows(currentBody).some(
@@ -141,18 +141,14 @@ export function validateStarEvent(event: StarEvent, repository: string): GitHubI
   if (issue.pull_request !== undefined) {
     throw new Error("Pull requests are not Inbox issues");
   }
-  if (issue.user?.login?.toLowerCase() !== expectedRepository.owner.toLowerCase()) {
-    throw new Error("Only the repository owner can request a Star");
-  }
   if (!hasInboxLabel(issue)) {
     throw new Error("Issue is not a StarBack Inbox");
   }
   return issue;
 }
 
-function validateCurrentIssue(issue: GitHubIssue, repository: string): void {
-  const parsed = parseRepositoryPath(repository);
-  if (parsed === null || issue.pull_request !== undefined || issue.user?.login?.toLowerCase() !== parsed.owner.toLowerCase()) {
+function validateCurrentIssue(issue: GitHubIssue): void {
+  if (issue.pull_request !== undefined) {
     throw new Error("The current Issue is no longer a valid StarBack Inbox");
   }
   if (!hasInboxLabel(issue)) {
