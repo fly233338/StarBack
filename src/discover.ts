@@ -159,7 +159,6 @@ function getCurrentMonthPages(issues: readonly GitHubIssue[], now: Date): InboxP
         title === null ||
         title.year !== year ||
         title.month !== month ||
-        issue.state !== "open" ||
         issue.pull_request !== undefined ||
         !hasInboxLabel(issue)
       ) {
@@ -180,12 +179,17 @@ async function writeRecommendations(
   log: (message: string) => void,
 ): Promise<void> {
   let remaining = [...candidates];
-  let lastPage = currentMonth.at(-1);
-  let nextPage = lastPage === undefined ? 1 : lastPage.title.page;
+  let lastPage = currentMonth.filter(({ issue }) => issue.state === "open").at(-1);
+  let nextPage = Math.max(0, ...currentMonth.map(({ title }) => title.page));
+  if (lastPage === undefined) {
+    nextPage += 1;
+  }
 
   while (remaining.length > 0) {
     if (lastPage === undefined || countGeneratedRecommendations(lastPage.issue.body ?? "") >= 100) {
-      nextPage += lastPage === undefined ? 0 : 1;
+      if (lastPage !== undefined) {
+        nextPage += 1;
+      }
       const pageRecommendations = remaining.slice(0, 100).map(({ repository: item }) => formatRecommendation(item, runId));
       const issue = await client.createIssue(repository, {
         title: formatInboxTitle(now, nextPage),

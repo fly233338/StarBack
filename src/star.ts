@@ -47,7 +47,7 @@ export async function runStar(options: StarOptions): Promise<void> {
   const currentBody = currentIssue.body ?? "";
   const selected = transitions.filter((transition) =>
     getCheckboxRows(currentBody).some(
-      (row) => row.checked && row.repository !== null && row.repository.key === transition.repository.key,
+      (row) => row.checked && row.repository.key === transition.repository.key,
     ),
   );
   if (selected.length === 0) {
@@ -66,7 +66,11 @@ export async function runStar(options: StarOptions): Promise<void> {
         throw new Error("Missing required environment variable: STARBACK_TOKEN");
       }
       const targetRepository = await options.client.getRepository(target);
-      if (targetRepository.private === true || targetRepository.visibility === "private") {
+      if (
+        targetRepository.private === true ||
+        targetRepository.visibility === "private" ||
+        targetRepository.visibility === "internal"
+      ) {
         throw new Error(`Target repository is not public: ${target}`);
       }
       if (await starClient.isStarred(target)) {
@@ -122,7 +126,7 @@ export function validateStarEvent(event: StarEvent, repository: string): GitHubI
   if (issue.pull_request !== undefined) {
     throw new Error("Pull requests are not Inbox issues");
   }
-  if (issue.user?.login.toLowerCase() !== expectedRepository.owner.toLowerCase()) {
+  if (issue.user?.login?.toLowerCase() !== expectedRepository.owner.toLowerCase()) {
     throw new Error("Only the repository owner can request a Star");
   }
   if (!hasInboxLabel(issue)) {
@@ -133,7 +137,7 @@ export function validateStarEvent(event: StarEvent, repository: string): GitHubI
 
 function validateCurrentIssue(issue: GitHubIssue, repository: string): void {
   const parsed = parseRepositoryPath(repository);
-  if (parsed === null || issue.pull_request !== undefined || issue.user?.login.toLowerCase() !== parsed.owner.toLowerCase()) {
+  if (parsed === null || issue.pull_request !== undefined || issue.user?.login?.toLowerCase() !== parsed.owner.toLowerCase()) {
     throw new Error("The current Issue is no longer a valid StarBack Inbox");
   }
   if (!hasInboxLabel(issue)) {

@@ -84,7 +84,7 @@ export function getCheckboxRows(body: string): CheckboxRow[] {
 }
 
 export function extractRepositoryKeys(body: string): Set<string> {
-  return new Set(getCheckboxRows(body).map((row) => row.repository?.key).filter((key): key is string => key !== undefined));
+  return new Set(getCheckboxRows(body).map((row) => row.repository.key));
 }
 
 export function countGeneratedRecommendations(body: string): number {
@@ -113,7 +113,7 @@ export function restoreFailedRepositories(body: string, failedKeys: ReadonlySet<
     .split(/\r?\n/)
     .map((line) => {
       const row = getCheckboxRows(line)[0];
-      if (row?.checked !== true || row.repository === null || !failedKeys.has(row.repository.key)) {
+      if (row?.checked !== true || !failedKeys.has(row.repository.key)) {
         return line;
       }
       return line.replace("[x]", "[ ]");
