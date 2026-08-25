@@ -29,21 +29,21 @@ flowchart TD
 - Reusable workflow 从 `job.workflow_repository` 与 `job.workflow_sha` checkout 引擎到 `.starback`，不默认 checkout 调用方仓库。
 - TypeScript 引擎运行 `node .starback/scripts/discover.ts` 或 `node .starback/scripts/star.ts`，所有 Issue 和 Star 操作都发生在调用方仓库与 owner 账号上。
 
-StarBack 自用 caller 使用相对路径：
+StarBack caller 使用公开仓库的 `main` 分支：
 
 ```text
-./.github/workflows/reusable-discover.yml
-./.github/workflows/reusable-star.yml
+fly233338/StarBack/.github/workflows/reusable-discover.yml@main
+fly233338/StarBack/.github/workflows/reusable-star.yml@main
 ```
 
-外部 caller 使用公开仓库的固定版本：
+外部 caller 使用公开仓库的 `main` 分支：
 
 ```text
-fly233338/StarBack/.github/workflows/reusable-discover.yml@v0.1.0
-fly233338/StarBack/.github/workflows/reusable-star.yml@v0.1.0
+fly233338/StarBack/.github/workflows/reusable-discover.yml@main
+fly233338/StarBack/.github/workflows/reusable-star.yml@main
 ```
 
-`v0.1.0` 发布前，外部验收应暂时使用已验证的完整 commit SHA；release tag 创建后不移动。
+两个 caller 文件已经写好上述引用；如需固定版本，可自行将引用替换为已验证的 commit SHA。
 
 ## 仓库结构
 
@@ -70,29 +70,14 @@ StarBack v0.1 只支持个人账号拥有的调用方仓库。
 2. `Settings → Actions → General` 允许 Actions 运行。
 3. 确认仓库允许使用公开 reusable workflows。个人仓库通常可直接调用公开的 `fly233338/StarBack`；组织策略可能需要管理员允许。
 
-### 2. 添加 Discover caller
+### 2. 直接复制两个 caller 文件
 
-创建 `.github/workflows/starback-discover.yml`：
+将以下两个文件原样复制到目标仓库的 `.github/workflows/` 目录。文件已经包含事件、权限、owner 校验和 `@main` 引用，不需要手写或修改 YAML：
 
-```yaml
-name: StarBack Discover
+- [复制 starback-discover.yml](https://github.com/fly233338/StarBack/blob/main/.github/workflows/starback-discover.yml)
+- [复制 starback-star.yml](https://github.com/fly233338/StarBack/blob/main/.github/workflows/starback-star.yml)
 
-on:
-  watch:
-    types: [started]
-  schedule:
-    - cron: "17 0 1 * *"
-
-permissions:
-  contents: read
-  issues: write
-
-jobs:
-  discover:
-    uses: fly233338/StarBack/.github/workflows/reusable-discover.yml@v0.1.0
-```
-
-如果 `v0.1.0` 尚未发布，把 `@v0.1.0` 换成已验证的 StarBack commit SHA。
+打开文件后可使用 GitHub 文件页面的复制按钮，或直接复制文件内容。
 
 ### 3. 创建 owner PAT
 
@@ -110,44 +95,13 @@ Name: STARBACK_TOKEN
 Secret: 你的 classic PAT
 ```
 
-### 4. 添加 Star caller
-
-创建 `.github/workflows/starback-star.yml`：
-
-```yaml
-name: StarBack Star
-
-on:
-  issues:
-    types: [edited]
-
-permissions:
-  contents: read
-  issues: write
-
-jobs:
-  star:
-    if: >-
-      github.event_name == 'issues' &&
-      github.event.action == 'edited' &&
-      github.event.repository.owner.type == 'User' &&
-      github.event.sender.type == 'User' &&
-      github.event.sender.login == github.repository_owner &&
-      github.event.issue.pull_request == null &&
-      contains(github.event.issue.labels.*.name, 'starback-inbox')
-    uses: fly233338/StarBack/.github/workflows/reusable-star.yml@v0.1.0
-    secrets:
-      STARBACK_TOKEN: ${{ secrets.STARBACK_TOKEN }}
-```
-
-Caller 必须同时授予 `contents: read` 和 `issues: write`。Reusable workflow 不能提升调用方权限；缺少 `issues: write` 时会明确失败，不会静默降级。
+复制的两个 caller 已经同时授予 `contents: read` 和 `issues: write`；Star caller 也会显式传递 `STARBACK_TOKEN`。Reusable workflow 不能提升调用方权限；缺少 `issues: write` 时会明确失败，不会静默降级。
 
 ## StarBack 自用 Dogfooding
 
-StarBack 源码仓库中的 `.github/workflows/starback-discover.yml` 和 `.github/workflows/starback-star.yml` 使用相对路径调用 reusable workflow。它与外部仓库使用同一个引擎和事件链，区别只有调用引用：
+StarBack 源码仓库中的 `.github/workflows/starback-discover.yml` 和 `.github/workflows/starback-star.yml` 也直接调用公开的 StarBack reusable workflow。它与外部仓库使用同一个引擎和事件链：
 
-- StarBack 源码：`./.github/workflows/reusable-*.yml`，使用 caller 同一提交。
-- 外部仓库：`fly233338/StarBack/.github/workflows/reusable-*.yml@v0.1.0`，使用固定发布版本。
+- StarBack 源码和外部仓库：`fly233338/StarBack/.github/workflows/reusable-*.yml@main`。
 
 因此 StarBack 自己的 Inbox 创建在 `fly233338/StarBack`，外部调用方的 Inbox 创建在各自仓库，不会写入引擎仓库。
 
@@ -226,7 +180,7 @@ Inbox 可以由 `github-actions[bot]` 创建；授权依据是本次 `issues.edi
 
 ### 为什么外部 caller 无法加载 reusable workflow
 
-确认 StarBack 仓库公开、调用方组织允许公开 reusable workflows，并使用已存在的 release tag 或完整 commit SHA。`v0.1.0` 发布前不能直接使用尚未创建的 tag。
+确认 StarBack 仓库公开、调用方组织允许公开 reusable workflows，并且复制的是最新的两个 caller 文件；它们默认引用 `fly233338/StarBack` 的 `main` 分支。
 
 ## 本地开发
 

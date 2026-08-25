@@ -13,4 +13,4 @@ permissions:
 jobs:
   discover:
     name: Discover repositories
-    uses: ./.github/workflows/reusable-discover.yml
+    uses: fly233338/StarBack/.github/workflows/reusable-discover.yml@main

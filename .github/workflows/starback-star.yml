@@ -19,6 +19,6 @@ jobs:
       github.event.sender.login == github.repository_owner &&
       github.event.issue.pull_request == null &&
       contains(github.event.issue.labels.*.name, 'starback-inbox')
-    uses: ./.github/workflows/reusable-star.yml
+    uses: fly233338/StarBack/.github/workflows/reusable-star.yml@main
     secrets:
       STARBACK_TOKEN: ${{ secrets.STARBACK_TOKEN }}
