@@ -12,9 +12,9 @@ StarBack 是一个可复用的 GitHub 原生引擎：当有人给你的仓库点
 
 ```mermaid
 flowchart TD
-    W[调用方 watch: started] --> C1[discover caller]
+    W[调用方 watch: started] --> C1[starback-discover.yml caller]
     S[调用方 schedule] --> C1
-    E[调用方 issues: edited] --> C2[star caller]
+    E[调用方 issues: edited] --> C2[starback-star.yml caller]
     C1 --> R1[reusable-discover.yml]
     C2 --> R2[reusable-star.yml]
     R1 -->|job.workflow_repository + job.workflow_sha| ENG[精确版本的 StarBack 引擎]
@@ -29,21 +29,14 @@ flowchart TD
 - Reusable workflow 从 `job.workflow_repository` 与 `job.workflow_sha` checkout 引擎到 `.starback`，不默认 checkout 调用方仓库。
 - TypeScript 引擎运行 `node .starback/scripts/discover.ts` 或 `node .starback/scripts/star.ts`，所有 Issue 和 Star 操作都发生在调用方仓库与 owner 账号上。
 
-StarBack caller 使用公开仓库的 `main` 分支：
+所有 caller（包括 StarBack 自身）都使用公开仓库的 `main` 分支：
 
 ```text
 fly233338/StarBack/.github/workflows/reusable-discover.yml@main
 fly233338/StarBack/.github/workflows/reusable-star.yml@main
 ```
 
-外部 caller 使用公开仓库的 `main` 分支：
-
-```text
-fly233338/StarBack/.github/workflows/reusable-discover.yml@main
-fly233338/StarBack/.github/workflows/reusable-star.yml@main
-```
-
-两个 caller 文件已经写好上述引用；如需固定版本，可自行将引用替换为已验证的 commit SHA。
+StarBack 源码仓库本身也是普通调用方，两个 `starback-*.yml` 文件与外部用户复制的 caller 文件使用相同引用。Inbox 和所有 API 操作仍发生在当前调用方仓库；如需固定版本，可自行将 `@main` 替换为已验证的 commit SHA。
 
 ## 仓库结构
 

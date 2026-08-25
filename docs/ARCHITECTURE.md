@@ -13,8 +13,7 @@ v0.1 只支持个人账号拥有的调用方仓库，不支持组织仓库、多
 ```text
 调用方仓库 workflow
     | 事件、github.repository、github.token、权限、STARBACK_TOKEN
-    |  self: ./.github/workflows/reusable-*.yml
-    |  external: fly233338/StarBack/.github/workflows/reusable-*.yml@v0.1.0
+    |  all callers: fly233338/StarBack/.github/workflows/reusable-*.yml@main
     v
 reusable workflow
     |  job.workflow_repository + job.workflow_sha
@@ -32,7 +31,7 @@ StarBack TypeScript 引擎
 - 引擎代码来源由 reusable workflow 内的 `job.workflow_repository` 和 `job.workflow_sha` 确定。checkout 使用这两个值并放入 `.starback`，不会默认 checkout 调用方仓库。
 - 运行上下文始终属于调用方：事件 JSON、`GITHUB_REPOSITORY`、`GITHUB_RUN_ID`、`GITHUB_EVENT_NAME`、默认环境变量和 `github.token` 都指向触发调用方 workflow 的仓库。
 - 用户身份属于调用方：只有 Star reusable workflow 接收调用方显式传入的 `STARBACK_TOKEN`，并且只用于用户级 Starring API。
-- 同仓库相对调用使用 caller 同一提交；外部调用使用其引用解析到的精确版本。外部发布使用 release tag，预发布验收使用 commit SHA。
+- StarBack 自身与外部调用方都使用公开的 `fly233338/StarBack/.github/workflows/reusable-*.yml@main`；如需可复现执行，可将 caller 引用替换为已验证的 commit SHA。
 
 GitHub.com 提供 `job.workflow_repository` 和 `job.workflow_sha`；v0.1 不支持 GitHub Enterprise Server。
 
@@ -62,7 +61,7 @@ Reusable workflow 的公共接口只有 `workflow_call`：
 ### Watch 发现链
 
 1. 调用方的 `watch: [started]` 触发 discover caller；StarBack 自用 caller 还在每月 1 日 `00:17 UTC` 触发 schedule。
-2. Caller 授予 `contents: read` 和 `issues: write`，并调用本提交或外部固定版本的 `reusable-discover.yml`。
+2. Caller 授予 `contents: read` 和 `issues: write`，并调用公开的 `reusable-discover.yml@main`。
 3. Reusable job 按调用方仓库建立 `queue: max` concurrency，使用 Node 24 checkout 精确引擎源码到 `.starback`，然后运行 `node .starback/scripts/discover.ts`。
 4. `discover.ts` 验证事件 action、仓库归属和事件仓库与调用方 `GITHUB_REPOSITORY` 一致；仅接受个人账号仓库。
 5. 确保 `starback-inbox` 标签存在。缺失时创建颜色 `0969da`、描述 `Managed by StarBack` 的标签，并关闭标题合法、带此标签且月份早于当前 UTC 月份的开放 Inbox。
@@ -138,4 +137,4 @@ API 分页使用 `per_page=100`，按响应的 `Link` 关系继续读取。Disco
 
 ## 版本与发布
 
-外部 caller 固定引用公开 StarBack 仓库的 release tag，例如 `fly233338/StarBack/.github/workflows/reusable-discover.yml@v0.1.0`。发布前使用实现提交 SHA 做外部验收；`v0.1.0` 创建后不移动，后续引擎变更使用新版本 tag。本次重构不创建 tag 或 Release。
+Caller 默认引用公开 StarBack 仓库的 `main` 分支，例如 `fly233338/StarBack/.github/workflows/reusable-discover.yml@main`。`main` 是滚动版本；如需固定引擎版本，应改用已验证的 commit SHA。本次不创建 tag 或 Release。
