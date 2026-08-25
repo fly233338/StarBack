@@ -95,16 +95,6 @@ Name: STARBACK_TOKEN
 Secret: 你的 classic PAT
 ```
 
-复制的两个 caller 已经同时授予 `contents: read` 和 `issues: write`；Star caller 也会显式传递 `STARBACK_TOKEN`。Reusable workflow 不能提升调用方权限；缺少 `issues: write` 时会明确失败，不会静默降级。
-
-## StarBack 自用 Dogfooding
-
-StarBack 源码仓库中的 `.github/workflows/starback-discover.yml` 和 `.github/workflows/starback-star.yml` 也直接调用公开的 StarBack reusable workflow。它与外部仓库使用同一个引擎和事件链：
-
-- StarBack 源码和外部仓库：`fly233338/StarBack/.github/workflows/reusable-*.yml@main`。
-
-因此 StarBack 自己的 Inbox 创建在 `fly233338/StarBack`，外部调用方的 Inbox 创建在各自仓库，不会写入引擎仓库。
-
 ## 发现与排名
 
 `watch: started` 会：
@@ -150,7 +140,7 @@ StarBack 源码仓库中的 `.github/workflows/starback-discover.yml` 和 `.gith
 
 Star caller 会重新读取最新 Issue。如果你在它开始前取消勾选，StarBack 会跳过该项目。已经 Star 的项目保持勾选；目标不存在、不可公开访问、PAT 缺失或 API 失败的项目会恢复为 `[ ]`，并让 workflow 失败。取消勾选不会自动 Unstar。
 
-Inbox 可以由 `github-actions[bot]` 创建；授权依据是本次 `issues.edited` 的 `sender` 是调用方仓库 owner，不是 Issue 作者。
+Inbox 可以由 `github-actions[bot]` 创建；授权依据是本次 `issues.edited` 的 `sender` 是调用方仓库 owner。
 
 ## 安全原则
 
