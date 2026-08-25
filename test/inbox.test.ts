@@ -31,7 +31,7 @@ describe("Inbox formatting", () => {
 
     assert.equal(
       recommendation,
-      "- [ ] alice/project — TypeScript · ★126 <!-- starback-run:12345 -->",
+      "- [ ] [alice/project](https://github.com/alice/project) — TypeScript · ★126 <!-- starback-run:12345 -->",
     );
   });
 

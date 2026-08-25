@@ -71,11 +71,11 @@ export function hasInboxLabel(issue: GitHubIssue): boolean {
 
 export function getCheckboxRows(body: string): CheckboxRow[] {
   return body.split(/\r?\n/).flatMap((line, lineIndex) => {
-    const match = /^- \[([ x])\] ([^\s]+)(?:\s.*)?$/.exec(line);
+    const match = /^- \[([ x])\] (?:\[([^\]]+)\]\(https:\/\/github\.com\/([^\s)]+)\)|([^\s]+))(?:\s.*)?$/.exec(line);
     if (match === null) {
       return [];
     }
-    const repository = parseRepositoryPath(match[2]);
+    const repository = parseRepositoryPath(match[2] ?? match[4]);
     if (repository === null) {
       return [];
     }
@@ -94,7 +94,7 @@ export function countGeneratedRecommendations(body: string): number {
 export function formatRecommendation(repository: GitHubRepository, runId: string): string {
   const language = repository.language?.trim() || "Unknown";
   const stars = Math.max(0, Math.trunc(repository.stargazers_count));
-  return `- [ ] ${repository.full_name} — ${language} · ★${stars} ${RUN_MARKER_PREFIX}${runId} -->`;
+  return `- [ ] [${repository.full_name}](https://github.com/${repository.full_name}) — ${language} · ★${stars} ${RUN_MARKER_PREFIX}${runId} -->`;
 }
 
 export function appendRecommendations(body: string, recommendations: readonly string[]): string {
